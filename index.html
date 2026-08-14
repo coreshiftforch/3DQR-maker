@@ -2455,7 +2455,7 @@ document.querySelectorAll('select[data-slot]').forEach(sel => {
   sel.addEventListener('change', () => {
     state.slots[sel.dataset.slot] = sel.value;
     syncBoxPanel();
-    requestRebuild(true);
+    requestRebuild(false);          // 面の割りあてでは大きさが変わらない＝カメラはそのまま
   });
 });
 
@@ -2465,12 +2465,15 @@ const showErr = msg => {
   errBox.textContent = msg;
   errBox.style.display = msg ? 'block' : 'none';
 };
+/* ★はめ込みのボタンは**カメラに触らない**（refit=false）。
+   ぜんたいの大きさは変わらないので置き直す理由がないし、向きを見くらべたいときに
+   毎回カメラが戻ると、回して確かめることができない（ユーザーからの指摘）。 */
 const segBox = (id, onPick) => {
   document.getElementById(id).addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     [...e.currentTarget.querySelectorAll('button')].forEach(x => x.setAttribute('aria-pressed', x === b));
     onPick(b.dataset.v);
-    requestRebuild(true);
+    requestRebuild(false);
   });
 };
 segBox('boxJoin', v => {
@@ -2573,7 +2576,7 @@ document.getElementById('stlFile').addEventListener('change', async e => {
     showErr(`${f.name} を読めませんでした：${ex && ex.message || ex}` +
       '（読めるのは STL / OBJ / 3MF です）');
   }
-  requestRebuild(true);
+  requestRebuild(false);            // 読みこんでも本体の大きさは変わらない
 });
 document.getElementById('loadbox').onclick = () => {
   // 「もう作ってある」人がすぐ読みこめるように、モードを切りかえてファイル選択を開く
