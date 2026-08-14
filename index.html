@@ -486,6 +486,7 @@ details.adv[open] summary{margin-bottom:6px}
       <button data-v="assembled" aria-pressed="true">組み立て</button>
       <button data-v="exploded">分解</button>
       <button data-v="print">印刷の並び</button>
+      <button data-toggle="coin" title="実物大の10円玉（φ23.5mm）をとなりに置きます">大きさ比較</button>
     </div>
   </div>
 
@@ -507,7 +508,9 @@ const FILAMENTS = [
 // 既定は100円ショップの丸型磁石（φ6.5×3mm）。ほかは手持ちのネオジムに合わせて選ぶ用
 const MAGNETS = { '6.5x3':[6.5,3], '6x2':[6,2], '6x3':[6,3], '8x3':[8,3] };
 // 分解ビューに出す磁石の見本の色（銀色の金属）。印刷する部品ではないのでフィラメントとは別
-const MAGNET_COLOR = 0xc4c9d0;
+const MAGNET_COLOR = 0xc3cad3;
+// 大きさ比べに出す10円玉（実物大 φ23.5×1.5mm・青銅色）
+const COIN = { d:23.5, t:1.5, color:0xb4703c, gap:8 };
 // 誤り訂正は H で固定。下げるとモジュールは大きくなるが、3Dプリントは色・影の
 // コントラストが弱くて誤読しやすく、余裕（30%）がないと読めない（実機で確認済み）
 const EC = 'H';
@@ -584,6 +587,7 @@ const state = {
   // 色は5つ：QR①／QR②／QRの本体（タイル・プレート）／本体（わく・中ぶた・脚）／ロゴ
   cQr1:0x1a1a1a, cQr2:0x8f959c, cTile:0xf2f2f2, cBody:0xf2f2f2, cLogo:0x2ea7e0,
   view:'assembled',
+  coin:false,                   // 大きさ比べの10円玉を出すか
   plate:'p1s', sets:1,          // まとめ刷り（既定は1セット。増やすときは「いっぱいまで」）
 };
 
@@ -1807,9 +1811,13 @@ function buildStand() {
   const info = {
     arts, boxes:boxesS, boxMiss:boxMissS.map(b => b[0]), box:bxS,
     thickness:T, exploded:26, liftMax: sd + 16,
-    // 引き抜いたプレートは、立てたまま「くるり」と向きを変える（縦軸まわり）
+    /* ★スタンドはクリックしても裏返さない（2026-08-14 ユーザー指摘）。
+       差し込みが相欠き＝舌はうら面がわにしかないので、**裏返すと物理的にはまらない**。
+       できない持ちかたを見せてしまうと、組み立てを勘ちがいさせる。
+       クリックは「抜く → もどる」の2段だけ。`spinAxis` を持たせないことで、
+       placeParts も pointerup もまとめて裏返しをやめる（分岐を増やさない）。 */
     pivot: new THREE.Vector3(0, pc[0], pc[1]),
-    spinAxis: new THREE.Vector3(0, 0, 1),
+    spinAxis: null,
     minSize: Math.ceil(Math.max(0, ...arts.filter(a => a.art.kind === 'qr').map(a => a.need))),
     sizeMax: 140,
     dims: [
@@ -2170,6 +2178,30 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 view.appendChild(renderer.domElement);
 
+/* ★金属（磁石・10円玉）は「まわりの映りこみ」が無いと**真っ黒に見える**。
+   metalness を上げるほど拡散光が減って映りこみに置きかわるので、ライトだけの場面では
+   上げるほど暗くなる（＝これが物理的に正しい）。磁石を metalness 0.95 にしたら
+   銀色ではなく黒っぽくなったのはこれが原因。
+   → 空↔地面の小さなグラデーションを作って、**金属のマテリアルにだけ**映りこみとして渡す。
+   `scene.environment` にすると板やQRの見た目まで変わってしまうので、そうはしない。 */
+const metalEnv = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = 64; cv.height = 32;                    // 全天球は 横=縦×2
+  const ctx = cv.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 32);
+  g.addColorStop(0.00, '#ffffff');                  // 真上＝明るい天井
+  g.addColorStop(0.42, '#e8eef6');
+  g.addColorStop(0.52, '#6f7b88');                  // 水平線でストンと落とす＝金属らしい輪
+  g.addColorStop(1.00, '#2f353c');                  // 真下＝暗い床（ここが効いて「金属の陰」になる）
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 32);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  const pm = new THREE.PMREMGenerator(renderer);
+  const t = pm.fromEquirectangular(tex).texture;
+  pm.dispose(); tex.dispose();
+  return t;
+})();
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xe7edf3);
 const camera = new THREE.PerspectiveCamera(38, 1, 1, 4000);
@@ -2207,6 +2239,48 @@ ground.receiveShadow = true; scene.add(ground);
 
 const root = new THREE.Group(); scene.add(root);
 
+/* 大きさ比べの10円玉（実物大 φ23.5×1.5mm）。となりに寝かせて置くだけの飾りで、
+   ★書き出しにも部品表にも出てこない（parts でも ghosts でもなく、ただのメッシュ）。
+   root に入れておくと、frame() が root をずらしても部品との位置関係がずれない。
+   ★作り直しのときに捨てられないよう userData.keep で守る。 */
+const coin = new THREE.Group();
+{
+  const mat = new THREE.MeshStandardMaterial({
+    color:COIN.color, roughness:0.34, metalness:0.9, envMap:metalEnv, envMapIntensity:1.15 });
+  const r = COIN.d / 2;
+  // 本体＋ひとまわり小さい面（ふちの線が出て「硬貨っぽく」見える。模様までは作らない）
+  for (const [rr, tt] of [[r, COIN.t], [r - 1.1, COIN.t + 0.14]]) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rr, rr, tt, 48), mat);
+    m.rotation.x = Math.PI / 2;                 // 円柱の軸はYなので、寝かせてZ軸にする
+    m.castShadow = m.receiveShadow = true;
+    m.userData.keep = true;
+    coin.add(m);
+  }
+}
+coin.visible = false; coin.userData.keep = true; root.add(coin);
+
+/* 部品のとなり（+X がわ）の床に置く。どの表示（組み立て／分解／印刷の並び）でも同じ。
+   ★測るのは **root の中の座標**でないといけない。`expandByObject` は world で測るので、
+     frame() が root をずらしたぶんが混ざり、置き場所が表示ごとにズレる（実際ズレた）。
+     部品の obj は root の直下なので、その `matrix`（＝root内の位置）で測る。 */
+const coinBB = new THREE.Box3(), coinTmp = new THREE.Box3();
+function placeCoin(parts) {
+  coin.visible = !!state.coin;
+  if (!coin.visible || !parts.length) return;
+  coinBB.makeEmpty();
+  for (const p of parts) for (const m of p.obj.children) {
+    if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+    coinTmp.copy(m.geometry.boundingBox).applyMatrix4(p.obj.matrix);
+    coinBB.union(coinTmp);
+  }
+  if (coinBB.isEmpty()) return;
+  coin.position.set(coinBB.max.x + COIN.gap + COIN.d / 2,
+                    (coinBB.min.y + coinBB.max.y) / 2,
+                    coinBB.min.z + COIN.t / 2);          // 部品と同じ床の高さに寝かせる
+  coin.updateMatrix();
+  coin.updateMatrixWorld(true);
+}
+
 /* ★「プレート」表示は 2026-08-14 に外した（ユーザー判断：まとめ刷りの並びは
    スライサーで見れば足りる）。ベッドの板・ふちの線もいっしょに消してある。
    まとめ刷り自体（buildPlate と書き出し）はそのまま残っている。 */
@@ -2241,7 +2315,8 @@ function hitLiftable(ev) {
   const r = renderer.domElement.getBoundingClientRect();
   ptr.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ptr, camera);
-  return ray.intersectObjects(root.children, true).length > 0;
+  // 10円玉は飾りなので、押しても部品は動かさない
+  return ray.intersectObjects(root.children.filter(o => o !== coin), true).length > 0;
 }
 
 renderer.domElement.addEventListener('pointerdown', e => downAt = [e.clientX, e.clientY]);
@@ -2249,9 +2324,11 @@ renderer.domElement.addEventListener('pointerup', e => {
   const d = downAt; downAt = null;
   if (!d || Math.hypot(e.clientX - d[0], e.clientY - d[1]) > 5) return;
   if (!hitLiftable(e)) return;
-  // 1回目＝外す／2回目＝裏返して うら面を見せる／3回目＝もとにもどす
+  // 1回目＝外す／2回目＝裏返して うら面を見せる／3回目＝もとにもどす。
+  // ★裏返せないかたち（スタンド＝相欠きなので裏返すとはまらない）は「外す→もどる」の2段
+  const canSpin = !!current.info.spinAxis;
   if (!liftTo) { liftTo = current.info.liftMax || 16; spinTo = 0; }
-  else if (!spinTo) spinTo = Math.PI;
+  else if (canSpin && !spinTo) spinTo = Math.PI;
   else { spinTo = 0; liftTo = 0; }
 });
 renderer.domElement.addEventListener('pointermove', e => {
@@ -2289,9 +2366,14 @@ function placeParts(parts, info) {
 
 function applyView(parts, info, refit) {
   // クリックの案内は「組み立て」のときだけ（並べて見ているときは押しても動かない）
-  document.getElementById('hint').style.display = state.view === 'assembled' ? '' : 'none';
+  const hint = document.getElementById('hint');
+  hint.style.display = state.view === 'assembled' ? '' : 'none';
+  // 裏返せないかたちでは「裏返す」と書かない（できない操作を案内しない）
+  hint.textContent = (info.spinAxis ? 'クリック＝QRを外す→もう1回で裏返す' : 'クリック＝QRを抜く→もう1回でもどる')
+    + '／ドラッグ＝回転／ホイール＝拡大';
   if (state.view !== 'assembled') { liftNow = liftTo = 0; spinNow = spinTo = 0; }
   placeParts(parts, info);
+  placeCoin(parts);
   frame(parts, refit);
 }
 
@@ -2302,6 +2384,7 @@ function frame(parts, refit) {
   root.updateMatrixWorld(true);
   const box = new THREE.Box3();
   parts.forEach(p => { p.obj.updateMatrixWorld(true); box.expandByObject(p.obj); });
+  if (coin.visible) box.expandByObject(coin);      // 10円玉も入れて枠に収める
   if (box.isEmpty()) return;
   const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
   root.position.set(-c.x, -c.y, -box.min.z);         // 底をZ=0（床）にそろえる
@@ -2329,12 +2412,12 @@ function rebuild(refit) {
   // 前回のジオメトリ／マテリアルを捨てる。スライダーを動かすと毎回作り直すので、
   // 捨てないとGPU側にどんどん溜まる
   root.traverse(o => {
-    if (!o.isMesh) return;
+    if (!o.isMesh || o.userData.keep) return;      // 10円玉は使いまわすので捨てない
     o.geometry.dispose();
     if (o.material.__disposed) return;
     o.material.__disposed = true; o.material.dispose();
   });
-  root.remove(...root.children);
+  root.remove(...root.children.filter(o => o !== coin));
 
   // まとめ刷りは表示しないが、書き出しと案内のために詰めておく
   built.plate = buildPlate(built.parts, state.sets, state.plate);
@@ -2350,8 +2433,9 @@ function rebuild(refit) {
     const key = metal ? 'm' + c : c;
     let m = mats.get(key);
     if (!m) mats.set(key, m = new THREE.MeshStandardMaterial(metal
-      // 磁石はフィラメントと見分けがつくように、つやのある金属で
-      ? { color:c, roughness:0.22, metalness:0.95 }
+      // 磁石はフィラメントと見分けがつくように、つやのある金属で。
+      // ★envMap が無いと真っ黒になる（金属は映りこみで見える）ので必ず付ける
+      ? { color:c, roughness:0.16, metalness:1.0, envMap:metalEnv, envMapIntensity:1.35 }
       : { color:c, roughness:0.62, metalness:0.02 }));
     return m;
   };
@@ -2748,9 +2832,18 @@ swatches('cLogo', 'cLogo', 'c5n');
 
 document.getElementById('viewbar').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  [...e.currentTarget.querySelectorAll('button')].forEach(x => x.setAttribute('aria-pressed', x === b));
+  // ★「大きさ比較」は表示の切りかえではなく入／切。3つのボタンの選択には混ぜない
+  if (b.dataset.toggle === 'coin') {
+    state.coin = !state.coin;
+    b.setAttribute('aria-pressed', state.coin);
+    // 出すときだけカメラを合わせ直す（横に置くので、そのままだと画面の外に出る）
+    requestRebuild(state.coin);
+    return;
+  }
+  [...e.currentTarget.querySelectorAll('button[data-v]')]
+    .forEach(x => x.setAttribute('aria-pressed', x === b));
   state.view = b.dataset.v;
-  // まとめ刷りの表示は並べるパーツの数がちがうので、作り直してから合わせる
+  // 分解のときは磁石の見本を足すので、作り直してから合わせる
   requestRebuild(true);
 });
 
@@ -2792,7 +2885,7 @@ document.getElementById('dlpng').onclick = () => {
 // 動作確認用の入口（DevToolsから __qr3d.check() で書き出しの中身を数字で見られる）
 window.__qr3d = {
   get model() { return current; },
-  renderer, camera, controls,
+  renderer, camera, controls, scene, root, coin,
   export3MF, exportSTL,
   state, PLATES, PL, BOX, buildPlate, maxSets, volumeOf, printMatrix,
   parseSTL, parseOBJ, parse3MF, parseModel, unzipAll,
