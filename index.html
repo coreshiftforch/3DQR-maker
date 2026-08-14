@@ -532,7 +532,11 @@ const K = {
   dowelIn : 4.0,     // ダボの位置をタイルのふちから内がわへ入れる量
 };
 const S = {
-  slotFit:0.35,          // 受け口と舌のすきま
+  /* 受け口と舌のすきま。★口は広く・奥は狭い「くさび」にする（2026-08-14）。
+     0.35mm 一定だと差しても遊びが残ってカタつく（ユーザー指摘「うまく引っ付かなそう」）。
+     入り口を広くしておけば差しはじめは軽く、押しこむほど締まって、最後で止まる。 */
+  slotFit:0.22,          // 受け口の口がわのすきま
+  slotGrip:0.10,         // いちばん奥のすきま（ここで締まる）
   slotDepth:9.0,         // 差し込みの長さ
   archRise:0.18,         // プレート上辺のドームの高さ（幅に対する割合）
 };
@@ -1658,7 +1662,8 @@ function buildStand() {
   const st = Math.sin(th), ct = Math.cos(th);
   const R = state.bend, D = state.depth;
   const tt = Math.min(2.6, T * 0.46);                // 舌の厚み
-  const socket = tt + S.slotFit;                     // 受け口の深さ（板の厚み方向）
+  const socket = tt + S.slotFit;                     // 受け口の深さ（口がわ・板の厚み方向）
+  const socketEnd = tt + S.slotGrip;                 // いちばん奥（ここが狭い＝くさび）
 
   const plateOut = archPlatePts(W, H, 1.2, arch);    // 下2かどはほぼ直角（脚と続けるため）
   const qrCy = -H / 2 + sd + W / 2;                  // もようの中心＝見える正方形の中心
@@ -1709,6 +1714,9 @@ function buildStand() {
     // ★切り欠きの内がわは、そのまま板の内面に続く。ここで口の内がわのかど（off(Dp,-T/2)）を
     //   打ってしまうと、同じ線を行って戻るヒゲになり、三角形分割が壊れる（面が1枚余る）
     const Mout = off(Dp, T / 2), N1 = off(Dp, -T / 2 + socket);
+    // ★奥ほど浅く掘る＝すきまが狭くなる「くさび」。舌はまっすぐなので、
+    //   差しはじめは軽く、押しこむほど両面が当たって締まる（1.8°ほどの傾き）
+    const N2 = back(off(Dp, -T / 2 + socketEnd), deep);
     const Nend = back(off(Dp, -T / 2), deep);
     const cap = [];                                  // 足のうしろ端は半円で終わる
     for (let i = 1; i < 8; i++) {
@@ -1717,7 +1725,7 @@ function buildStand() {
     }
     const prof = [[uT, 0]]                           // 足の下（＝接地面）
       .concat(arcOut)                                // 手前の曲がり（外がわ）
-      .concat([Mout, N1, back(N1, deep), Nend])      // 口と受け口の切り欠き
+      .concat([Mout, N1, N2, Nend])                  // 口と受け口の切り欠き（奥がくさび）
       .concat(arcIn.slice().reverse())               // 内がわを戻る
       .concat([[uT, T]]).concat(cap);
     // プレートの中心＝口から板の向きに（全長の半分 − 差し込み）進んだ点
@@ -1826,7 +1834,8 @@ function buildStand() {
       ['曲がり', `半径${R}mm・${(90 + state.tilt)}°まわりこむ（手前の下）`],
       ['奥行', `${(uT + R + T).toFixed(0)}mm（うしろの足の先まで）／傾き ${state.tilt}°`],
       ['立てた高さ', `約${(Dp[1] + (H - sd) * ct).toFixed(0)}mm`],
-      ['つなぎ目', `舌 厚み${tt.toFixed(1)} × 長さ${sd}mm（受け口のすきま${S.slotFit}mm）`],
+      ['つなぎ目', `舌 厚み${tt.toFixed(1)} × 長さ${sd}mm（受け口のすきま 口${S.slotFit.toFixed(2)}` +
+                   ` → 奥${S.slotGrip.toFixed(2)}mm の<b>くさび</b>。押しこむほど締まります）`],
       ...boxesS.map(([where, b]) =>
         [`はめ込み（${where}）`,
          `<b>${b.kind === 'round' ? `φ${b.w.toFixed(2)}` : `${b.w.toFixed(2)} × ${b.d.toFixed(2)}`}` +
@@ -1856,7 +1865,8 @@ function buildStand() {
         (bxS.merged
           ? '<b>地続き</b>なのですきま0です。ぴったり接しているので、刷ると融合して1つの固まりになります'
           : `受け口はすきま片側 ${bxS.fit.toFixed(2)}mm ぶん大きく開けてあります`)] : []),
-      '③ プレートの下の舌を、脚の受け口に差しこむだけ。接着は不要です',
+      '③ プレートの下の舌を、脚の受け口に<b>奥まで押しこむ</b>だけ。受け口は奥ほど狭い' +
+      'くさびなので、最後で締まって止まります（接着は不要）',
       'つなぎ目は前後で 1 本ずつ。横から見ると一枚板のまま続いて見えます',
     ],
   };
@@ -2887,7 +2897,7 @@ window.__qr3d = {
   get model() { return current; },
   renderer, camera, controls, scene, root, coin,
   export3MF, exportSTL,
-  state, PLATES, PL, BOX, buildPlate, maxSets, volumeOf, printMatrix,
+  state, PLATES, PL, BOX, K, S, buildPlate, maxSets, volumeOf, printMatrix,
   parseSTL, parseOBJ, parse3MF, parseModel, unzipAll,
   detectService, iconGrid, ICON_ART, SERVICES,
   normalizeMesh, boxSpec, boxParts, boxWindow, rectPts,
