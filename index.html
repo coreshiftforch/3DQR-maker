@@ -139,11 +139,17 @@ details.adv[open] summary{margin-bottom:6px}
 /* ── 右ビュー ───────────────────────────── */
 #view{flex:1; position:relative; min-width:0; background:linear-gradient(#eef2f6,#dfe6ee)}
 #view canvas{display:block; width:100%; height:100%}
+/* ★width:max-content が要る。left:50% だけだと、幅が「left から右端まで」に
+   しぼられてしまい、画面がせまいとボタンが潰れて縦書きになる（スマホで発覚）。
+   それでも入らないときは flex-wrap で素直に2段になる */
 #viewbar{
   position:absolute; left:50%; transform:translateX(-50%); bottom:16px;
-  display:flex; gap:6px; background:rgba(255,255,255,.92); padding:6px;
+  width:max-content; max-width:calc(100% - 24px);
+  display:flex; flex-wrap:wrap; justify-content:center; gap:6px;
+  background:rgba(255,255,255,.92); padding:6px;
   border-radius:12px; box-shadow:0 3px 14px rgba(20,30,45,.16); backdrop-filter:blur(6px);
 }
+#viewbar button{white-space:nowrap}
 #viewbar button{
   padding:7px 13px; border:0; border-radius:8px; background:transparent; font:inherit;
   font-size:12.5px; cursor:pointer; color:var(--sub);
@@ -174,14 +180,38 @@ details.adv[open] summary{margin-bottom:6px}
   background:rgba(255,255,255,.8); padding:5px 9px; border-radius:8px;
 }
 
-@media (max-width:860px){
+/* ★たてに積むのは「本当にせまいとき」だけ。
+   スマホの横向き（844×390など）で積むと、幅は余っているのにビューが潰れる。
+   640pxを境にすれば、たて持ちのスマホは積み・横持ちとタブレットは左右に並ぶ */
+@media (max-width:640px){
   #app{flex-direction:column-reverse}
-  #panel{width:100%; height:58dvh; border-right:0; border-top:1px solid var(--line)}
-  #view{height:42dvh}
+  #panel{width:100%; height:60dvh; border-right:0; border-top:1px solid var(--line)}
+  #view{height:40dvh}
+}
+/* 左右に並ぶが画面が広くないとき、パネルを少し細くしてビューに幅を回す */
+@media (min-width:641px) and (max-width:860px){
+  #panel{width:300px}
+}
+/* ここから下は「指で触る画面」ぜんぶに効かせる（積むかどうかとは別） */
+@media (max-width:860px){
   #qrpv{padding:6px; gap:6px}
   #qrpv figure{width:78px}
   #qrpv figcaption{font-size:11px; margin-top:4px}
   #hint{display:none}
+  /* せまい画面ではビューバーを少し詰めて、4つを1行に収める */
+  #viewbar{bottom:10px; padding:5px; gap:4px}
+  #viewbar button{padding:6px 10px; font-size:12px}
+  /* 色の割りあては「モデルの色→」を上の行に出して、色見本に幅をぜんぶ使わせる */
+  .maprow{flex-wrap:wrap; align-items:center}
+  .maprow .swatches{flex:1 1 100%}
+  /* ★指で触る前提なので、当たり判定を広げる。
+     スライダーは見た目の線は細いままでよく、要素の高さだけ増やせば押しやすくなる */
+  input[type=range]{height:30px}
+  button.mini{padding:7px 12px}
+  input[type=file]{padding:6px 0}
+  select{padding:11px 10px}
+  .seg button{padding:11px 8px}
+  label.row{margin:12px 0 4px}
 }
 </style>
 </head>
@@ -296,6 +326,20 @@ details.adv[open] summary{margin-bottom:6px}
               読みこんだときに、いちばん近い色を自動で選んであります。
               いちばん左の斜線は「<b>もとの色のまま</b>」です。</div>
           </div>
+          <label class="row"><span>ロゴの向き（面から見て）</span></label>
+          <div class="seg" id="boxTurn">
+            <button data-v="0" aria-pressed="true">0°</button>
+            <button data-v="90">90°</button>
+            <button data-v="180">180°</button>
+            <button data-v="270">270°</button>
+          </div>
+          <div class="seg" id="boxFlip" style="margin-top:6px">
+            <button data-v="0" aria-pressed="true">そのまま</button>
+            <button data-v="1">裏返す</button>
+          </div>
+          <div class="note">読みこんだモデルは <b>+Z がわ（上）が見せたい面</b>として入れます。
+            逆さに作ってあって<b>絵が裏から出ている</b>ときは「裏返す」を押してください。<br>
+            四角柱で 90°／270° にすると、受け口の<b>タテヨコも入れかわります</b>。</div>
           <label class="row"><span>倍率</span></label>
           <div class="seg" id="boxScale">
             <button data-v="1" aria-pressed="true">×1（mm）</button>
@@ -504,6 +548,8 @@ const state = {
     dia:20,            // 円柱の直径（mm）
     fit:0.20,          // すきま（片側）
     scale:1,           // 読みこんだモデルの倍率（1/1000で作ってしまったとき用。3MFは不要）
+    turn:0,            // 読みこんだモデルの回し方（面から見て 0/90/180/270°）
+    flip:false,        // 読みこんだモデルを裏返す（自動で決めた向きの逆にする）
     mesh:null, info:null,
     map:[],            // 読みこんだ色 → 使うフィラメント（null＝もとの色のまま）
   },
@@ -722,7 +768,32 @@ async function parse3MF(buf) {
     const list = props.get(pid);
     return list && list[idx] != null ? list[idx] : null;
   };
-  const emit = (ob, m) => {
+  /* 変換行列の合成。3MFの transform は 4行×3列を並べた12個で、
+     x' = m0x + m3y + m6z + m9（列が入力の軸）。P のあとに C を掛ける形にする */
+  const mul = (P, C) => {
+    if (!P) return C;
+    if (!C) return P;
+    const o = new Array(12);
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 3; i++) {
+      let s = j === 3 ? P[9 + i] : 0;
+      for (let k = 0; k < 3; k++) s += P[3 * k + i] * C[3 * j + k];
+      o[3 * j + i] = s;
+    }
+    return o;
+  };
+  /* ★オブジェクトが <components> で組み立てられていることがある
+     （このアプリの書き出しも、Blender や Bambu Studio の3MFもこの形になる）。
+     メッシュを直接持っていないので、たどらないと「モデルが空」になってしまう。 */
+  const emit = (ob, m, depth = 0) => {
+    const comps = byTag(ob, 'component');
+    if (comps.length) {
+      if (depth > 8) return;                       // 自分を参照するような壊れた3MF対策
+      for (const c of comps) {
+        const sub = objs.get(c.getAttribute('objectid'));
+        if (sub && sub !== ob) emit(sub, mul(m, tr(c.getAttribute('transform'))), depth + 1);
+      }
+      return;
+    }
     const mesh = byTag(ob, 'mesh')[0];
     if (!mesh) return;
     const objPid = ob.getAttribute('pid');
@@ -751,7 +822,11 @@ async function parse3MF(buf) {
   if (items.length) for (const it of items) {
     const ob = objs.get(it.getAttribute('objectid'));
     if (ob) emit(ob, tr(it.getAttribute('transform')));
-  } else for (const ob of objs.values()) emit(ob, null);
+  } else {
+    // buildが無いときは全部拾う。★ただし部品として使われているものは二重に数えない
+    const used = new Set(byTag(doc, 'component').map(c => c.getAttribute('objectid')));
+    for (const [id, ob] of objs) if (!used.has(id)) emit(ob, null);
+  }
 
   const out = [...groups.entries()]
     .filter(([, a]) => a.length >= 9)
@@ -1184,11 +1259,13 @@ function boxSpec() {
   if (b.src === 'stl') {
     if (!b.mesh || !b.info) return null;
     const k = b.scale;
+    // ★90°／270°に回すと、囲みのタテヨコが入れかわる。受け口も入れかえないと入らない
+    const swap = b.turn === 90 || b.turn === 270;
+    const w = (swap ? b.info.d : b.info.w) * k, d = (swap ? b.info.w : b.info.d) * k;
     // 円柱として使うときは、囲みの長いほうを直径とみなす
-    const w = b.info.w * k, d = b.info.d * k;
     const dia = Math.max(w, d);
     return { kind:b.kind, w: round ? dia : w, d: round ? dia : d, h: b.info.h * k,
-             fit, merged, mesh:b.mesh, scale:k, from:'stl' };
+             fit, merged, mesh:b.mesh, scale:k, turn:b.turn, flip:b.flip, from:'stl' };
   }
   const side = round ? b.dia : b.side;
   return { kind:b.kind, w:side, d:side, h:b.h,
@@ -1209,13 +1286,25 @@ function boxWindow(b, cy = 0) {
 /* はめ込む部品（z0 から上へ h）。
    ★読みこんだモデルに色が付いていれば、**色ごとに別パーツ**にして返す。
      こうすると3MFに色がそのまま残り、スライサーでフィラメントを割り当てられる。
-   色の指定が無いところは「5 色」の"ロゴ"の色を使う（color:null で返す）。 */
-function boxParts(b, z0, cy = 0) {
+   色の指定が無いところは「5 色」の"ロゴ"の色を使う（color:null で返す）。
+
+   ★down … 受け口が「その部品のローカル −Z がわ」に開いている面で立てる。
+     読みこんだモデルは **+Z がわが見せたい面**（normalizeMesh が min.z を 0 にそろえる）
+     なので、そのまま入れると**底が表に出て、絵も逆さ向き**に見える。実際そうなった。
+     Y軸まわりに180°まわして入れる（＝物を裏返して置くのと同じ。鏡ではないので
+     文字が反転することはない）。刷るときも見せたい面がベッドに付くので、そのほうがきれい。
+   ★b.flip / b.turn … 向きは人が決められる。どちらの面を見せたいかも、
+     どっちが上かも、こちらからは分からないため（モデルしだい）。 */
+function boxParts(b, z0, cy = 0, down = false) {
   if (b.mesh) {
     const many = b.mesh.length > 1;
+    const back = b.flip ? !down : down;
     return b.mesh.map((m, i) => {
       const g = m.geom.clone();
       g.scale(b.scale, b.scale, b.scale);
+      if (back) { g.rotateY(Math.PI); g.translate(0, 0, b.h); }   // 0..h のまま上下だけ返る
+      // ★回すのは裏返したあと。そうすると「見えている面で回した角度」になる
+      if (b.turn) g.rotateZ(b.turn * Math.PI / 180);
       g.translate(0, cy, z0);
       // ★割りあてがあればそれを使う（無ければモデルの色のまま）
       const mapped = state.box.map && state.box.map[i] != null ? state.box.map[i] : m.color;
@@ -1366,12 +1455,14 @@ function buildKeyholder() {
   // ★アイコンは marks を出さない＝窓と地の詰め物だけ残るので「本当のくぼみ」になる。
   //   色が使えなくても影で読める（ツライチの色ちがいだと1色では消えてしまう）
   if (gBody) add(artName(aBody, 'ぜんたいのうら'), markColor(aBody), [gBody.marks], -cx, r1, bodyAsm);
-  // ★すきま0でも「別パーツ」にしておく。ぴったり接した閉じたカラどうしは
-  //   スライサーが融合して1つの固まりになるので、面はツライチのまま色だけ変えられる
-  //   （QRのうら面のインレイとまったく同じ作り）
-  if (bBody) for (const bp of boxParts(bBody, 0))
+  /* ★すきま0でも「別パーツ」にしておく。ぴったり接した閉じたカラどうしは
+     スライサーが融合して1つの固まりになるので、面はツライチのまま色だけ変えられる
+     （QRのうら面のインレイとまったく同じ作り）。
+     ★ただし**刷る位置は本体と同じ**にする。地続きは「本体とくっついた1つの実物」で、
+       離して並べたら刷れない（前はここでズラしていたので、スライサーで別々に出ていた）。 */
+  if (bBody) for (const bp of boxParts(bBody, 0, 0, true))
     add(`はめ込み（ぜんたいのうら）${bp.suffix}`, bp.color != null ? bp.color : state.cLogo,
-        [bp.geom], -cx, r1 + bodyW + 6,
+        [bp.geom], -cx, bBody.merged ? r1 : r1 + bodyW + 6,
         g => mT(0, 0, -upTb - (bBody.merged ? 0 : 2.4) * g));
 
   // 中ぶた：磁石にふたをして、この面がくぼみの底になる（QRタイルが当たる）
@@ -1392,9 +1483,9 @@ function buildKeyholder() {
     ...dowPins,
   ], -cx, r2, tileLowAsm, UP);
   if (gTile) add(artName(aTile, 'タイルのうら'), markColor(aTile), [gTile.marks], -cx, r2, tileLowAsm, UP);
-  if (bTile) for (const bp of boxParts(bTile, 0))
+  if (bTile) for (const bp of boxParts(bTile, 0, 0, true))
     add(`はめ込み（タイルのうら）${bp.suffix}`, bp.color != null ? bp.color : state.cLogo,
-        [bp.geom], -cx, r2 - tileW - 6,
+        [bp.geom], -cx, bTile.merged ? r2 : r2 - tileW - 6,
         g => mT(0, 0, lowT + 2.6 * g - (bTile.merged ? 0 : 2.4) * g));
 
   // QRタイル上：見せたい面が上。ダボ穴は磁石の穴と同じ層に開く。
@@ -1418,9 +1509,9 @@ function buildKeyholder() {
     slab(tileOut, [...mags, ...dowHoles], upTB - half, upTB),
   ], cx, r2, tileUpAsm, UP);
   if (gFront) add(artName(aFront, 'タイルのおもて'), markColor(aFront), [gFront.marks], cx, r2, tileUpAsm, UP);
-  if (bFront) for (const bp of boxParts(bFront, 0))
+  if (bFront) for (const bp of boxParts(bFront, 0, 0, true))
     add(`はめ込み（タイルのおもて）${bp.suffix}`, bp.color != null ? bp.color : state.cLogo,
-        [bp.geom], cx, r2 - tileW - 6, tileUpAt(bFront.merged ? 0 : 2.4));
+        [bp.geom], cx, bFront.merged ? r2 : r2 - tileW - 6, tileUpAt(bFront.merged ? 0 : 2.4));
 
   // 面ごとのもよう（情報表示と、大きさの下限の計算に使う）
   const arts = [
@@ -1632,15 +1723,16 @@ function buildStand() {
                       ],
                print:{ x:0, y:0 }, asm:pullOut, lift:out });
   // ★分解のときは「面の法線の向き」に抜く。プレートのローカル +Z がおもて面の外向き
+  // ★おもての受け口だけは local +Z に開くので、モデルを返さずそのまま入れる（down=false）
   if (bPlateF) for (const bp of boxParts(bPlateF, T - bPlateF.h, qrCy))
     parts.push({ name:`はめ込み（おもて）${bp.suffix}`,
                  color: bp.color != null ? bp.color : state.cLogo, geoms:[bp.geom],
-                 print:{ x:W + 8, y:0 },
+                 print: bPlateF.merged ? { x:0, y:0 } : { x:W + 8, y:0 },
                  asm:g => pullOut(g).multiply(mT(0, 0, (bPlateF.merged ? 0 : 2.4) * g)), lift:out });
-  if (bPlateB) for (const bp of boxParts(bPlateB, 0, qrCy))
+  if (bPlateB) for (const bp of boxParts(bPlateB, 0, qrCy, true))
     parts.push({ name:`はめ込み（うら）${bp.suffix}`,
                  color: bp.color != null ? bp.color : state.cLogo, geoms:[bp.geom],
-                 print:{ x:W + 8, y:-(W + 8) },
+                 print: bPlateB.merged ? { x:0, y:0 } : { x:W + 8, y:-(W + 8) },
                  asm:g => pullOut(g).multiply(mT(0, 0, (bPlateB.merged ? 0 : -2.4) * g)), lift:out });
   // スタンドのおもては上を向くので、アイコンもQRと同じく「凸」でよい
   if (aFront) parts.push({ name:artName(aFront, 'おもて'), color:markColor(aFront),
@@ -1773,19 +1865,44 @@ function meshXML(geoms) {
   return `<mesh><vertices>${vx}</vertices><triangles>${tx}</triangles></mesh>`;
 }
 
+/* 3MF書き出し。
+   ★同じ印刷位置にいるパーツは「1つの実物」（板＋色ちがいのもよう＋地続きのロゴ）なので、
+     3MFでも **1つのオブジェクトに束ねる**（<components>）。
+     バラバラのオブジェクトのまま渡すとスライサーが別々の物として扱い、
+     地続きにしたロゴが本体から離れてしまう（実際そうなった）。
+     束ねても中身は色ごとの別メッシュのままなので、フィラメントは1つずつ割り当てられる。 */
 function export3MF(parts) {
   const mats = parts.map(p =>
     `<base name="${p.name}" displaycolor="#${p.color.toString(16).padStart(6,'0').toUpperCase()}FF"/>`).join('');
-  const objs = parts.map((p, i) =>
-    `<object id="${i+1}" type="model" pid="10" pindex="${i}" name="${p.name}">${meshXML(bakedGeoms(p))}</object>`).join('');
-  const items = parts.map((_, i) => `<item objectid="${i+1}"/>`).join('');
+  const meshObjs = parts.map((p, i) =>
+    `<object id="${i+1}" type="model" pid="10" pindex="${i}" name="${p.name}">${meshXML(bakedGeoms(p))}</object>`);
+  // 印刷位置ごとにまとめる（printPieces と同じ考え方）
+  const order = [], byPos = new Map();
+  parts.forEach((p, i) => {
+    const k = `${p.print.x},${p.print.y}`;
+    let e = byPos.get(k);
+    if (!e) { byPos.set(k, e = { name:p.name, ids:[] }); order.push(e); }
+    e.ids.push(i + 1);
+  });
+  // ★束ねるオブジェクトのidは、参照するメッシュより後ろにする（3MFは前方参照できない）
+  let next = parts.length + 1;
+  const wraps = [], items = [];
+  for (const e of order) {
+    if (e.ids.length === 1) { items.push(e.ids[0]); continue; }
+    const id = next++;
+    wraps.push(`<object id="${id}" type="model" name="${e.name}"><components>` +
+      e.ids.map(i => `<component objectid="${i}"/>`).join('') + `</components></object>`);
+    items.push(id);
+  }
+  const objs = meshObjs.concat(wraps).join('');
+  const itemXML = items.map(i => `<item objectid="${i}"/>`).join('');
   const model = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
  <resources>
   <basematerials id="10">${mats}</basematerials>
   ${objs}
  </resources>
- <build>${items}</build>
+ <build>${itemXML}</build>
 </model>`;
   const ct = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>`;
   const rels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`;
@@ -1951,10 +2068,23 @@ function save(data, name, type) {
   a.click();
   setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 300000);
 }
+/* ★ダウンロードのファイル名は「半角英数だけ」にする。
+   日本語を入れると端末によって**文字化け**し、化けた名前がそのまま不正なパスになると
+   「データパスが見つかりません」でダウンロードごと失敗する（実際に両方おきた）。
+   あわせて、Windowsで使えない文字と**うしろの「.」や空白**も落とす。 */
+function safeName(s) {
+  return String(s)
+    .replace(/[^\x20-\x7e]/g, '')           // ★半角英数記号いがいは落とす（文字化けの元）
+    .replace(/[\\\/:*?"<>|]/g, '_')         // Windowsで使えない文字
+    .replace(/\s+/g, '_')                   // 空白・改行・タブ
+    .replace(/_{2,}/g, '_')
+    .replace(/_+\./g, '.')                  // 日本語ドメインだと「_.jp」が残るので詰める
+    .replace(/^[._]+|[._]+$/g, '')          // 先頭とうしろの「.」「_」
+    .slice(0, 60) || 'qr';
+}
 function fileBase() {
-  let host = state.text.replace(/^https?:\/\//, '').replace(/[\/\?#].*$/, '');
-  host = host.replace(/[\\\/:*?"<>|]/g, '_').slice(0, 40) || 'qr';
-  return (state.kind === 'key' ? 'QRキーホルダー_' : 'QRスタンド_') + host;
+  const host = state.text.replace(/^https?:\/\//i, '').replace(/[\/\?#].*$/, '').slice(0, 40);
+  return safeName((state.kind === 'key' ? 'QR-keyholder_' : 'QR-stand_') + host);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -2363,6 +2493,8 @@ segBox('boxSrc', v => {
   document.getElementById('boxStl').style.display  = v === 'stl'  ? '' : 'none';
 });
 segBox('boxScale', v => { state.box.scale = parseFloat(v); });
+segBox('boxTurn', v => { state.box.turn = parseInt(v, 10); });
+segBox('boxFlip', v => { state.box.flip = v === '1'; });
 const boxSlider = (id, key, labelId, dec = 1) => {
   const el = document.getElementById(id), lb = document.getElementById(labelId);
   const show = () => lb.textContent = state.box[key].toFixed(dec) + ' mm';
@@ -2455,7 +2587,7 @@ document.getElementById('dlbox').onclick = () => {
   // 印刷の向き（z=0 がベッド）にそろえてから落とす
   const gs = boxParts(b, 0).map(x => x.geom);
   save(exportSTL([{ name:'はめ込み', color:0, geoms:gs, print:{ x:0, y:0, r:0 } }]),
-       (b.kind === 'round' ? `円柱_φ${b.w.toFixed(1)}` : `四角柱_${b.w.toFixed(1)}x${b.d.toFixed(1)}`) +
+       safeName(b.kind === 'round' ? `cylinder_d${b.w.toFixed(1)}` : `box_${b.w.toFixed(1)}x${b.d.toFixed(1)}`) +
        `x${b.h.toFixed(1)}.stl`, 'model/stl');
 };
 
@@ -2547,7 +2679,7 @@ document.getElementById('dl3mf').onclick = () =>
   current && save(export3MF(current.parts), fileBase() + '.3mf', 'model/3mf');
 document.getElementById('dlstl').onclick = () =>
   current && save(exportSTL(current.parts), fileBase() + '.stl', 'model/stl');
-const plateName = () => `${fileBase()}_${current.plate.sets}セット`;
+const plateName = () => `${fileBase()}_x${current.plate.sets}set`;
 document.getElementById('dlplate3mf').onclick = () =>
   current && current.plate.sets &&
   save(export3MF(current.plate.parts), plateName() + '.3mf', 'model/3mf');
@@ -2572,7 +2704,9 @@ document.getElementById('dlpng').onclick = () => {
   for (const a of current.info.arts) {
     if (a.art.kind !== 'qr' || done.has(a.art.item)) continue;
     done.add(a.art.item);
-    pngOf(a.art.qr, done.size === 1 && current.info.arts.length === 1 ? '_QR' : '_' + ITEMS[a.art.item]);
+    // ★ファイル名は半角のみ。ITEMS は「QR①」なので使わない
+    pngOf(a.art.qr, done.size === 1 && current.info.arts.length === 1
+      ? '_QR' : (a.art.item === 'qr2' ? '_QR2' : '_QR1'));
   }
 };
 
