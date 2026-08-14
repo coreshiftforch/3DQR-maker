@@ -453,7 +453,7 @@ details.adv[open] summary{margin-bottom:6px}
       </div>
       <div class="note">部品どうしは <b>4mm</b>、ふちからは <b>5mm</b> 空けて、
         背の高い順に段を作って詰めています。入りきらないときはセット数を自動で減らします。
-        <b>「プレート」表示</b>で並びを目で確かめられます。</div>
+        並びはスライサーで開いて確かめてください。</div>
     </div>
 
     <div class="sec" style="border-bottom:0">
@@ -471,7 +471,6 @@ details.adv[open] summary{margin-bottom:6px}
       <button data-v="assembled" aria-pressed="true">組み立て</button>
       <button data-v="exploded">分解</button>
       <button data-v="print">印刷の並び</button>
-      <button data-v="plate">プレート</button>
     </div>
   </div>
 
@@ -492,6 +491,8 @@ const FILAMENTS = [
 ];
 // 既定は100円ショップの丸型磁石（φ6.5×3mm）。ほかは手持ちのネオジムに合わせて選ぶ用
 const MAGNETS = { '6.5x3':[6.5,3], '6x2':[6,2], '6x3':[6,3], '8x3':[8,3] };
+// 分解ビューに出す磁石の見本の色（銀色の金属）。印刷する部品ではないのでフィラメントとは別
+const MAGNET_COLOR = 0xc4c9d0;
 // 誤り訂正は H で固定。下げるとモジュールは大きくなるが、3Dプリントは色・影の
 // コントラストが弱くて誤読しやすく、余裕（30%）がないと読めない（実機で確認済み）
 const EC = 'H';
@@ -1526,6 +1527,20 @@ function buildKeyholder() {
     add(`はめ込み（タイルのおもて）${bp.suffix}`, bp.color != null ? bp.color : state.cLogo,
         [bp.geom], cx, bFront.merged ? r2 : r2 - tileW - 6, tileUpAt(bFront.merged ? 0 : 2.4));
 
+  /* ── 磁石の見本。★分解ビューにだけ出す「飾り」で、印刷する部品ではない。
+     だから `parts` には入れない（＝書き出し・まとめ刷り・部品表にはいっさい出てこない）。
+     入る場所は、上下の穴が向かい合ってできる空洞のまんなか：
+       ・本体（世界 −half〜0）＋中ぶた（0〜half）    → 中心 z = 0
+       ・QRタイル下（〜lowT+tLow）＋タイル上（そこから上）→ 中心 z = lowT + tLow
+     分解したときは、くっつく2つの部品の**あいだ**を漂うように g をかける
+     （本体0／中ぶた1.2 のあいだ＝0.6、タイル下2.6／タイル上3.8 のあいだ＝3.2）。 */
+  const magnetPair = z => [-magX, magX].map(x =>
+    slab(circlePts(x, 0, md / 2), [], z - mt / 2, z + mt / 2));
+  const ghosts = [
+    ['磁石（本体・中ぶた）', 0, 0.6], ['磁石（QRタイル）', lowT + tLow, 3.2],
+  ].map(([name, z, k]) => ({ name, color:MAGNET_COLOR, metal:true, geoms:magnetPair(z),
+                             print:{ x:0, y:0 }, asm:g => mT(0, 0, k * g), lift:null }));
+
   // 面ごとのもよう（情報表示と、大きさの下限の計算に使う）
   const arts = [
     ['タイルのおもて（凸）', aFront, fFront, tileW, K.tileGap],
@@ -1595,7 +1610,7 @@ function buildKeyholder() {
       '⑤ わくに残った' + rimH.toFixed(1) + 'mmのくぼみにQRタイルを落とすと磁石で保持されます',
     ],
   };
-  return { parts, info };
+  return { parts, ghosts, info };
 }
 
 /* 一枚板のスタンド。
@@ -1810,7 +1825,7 @@ function buildStand() {
       'つなぎ目は前後で 1 本ずつ。横から見ると一枚板のまま続いて見えます',
     ],
   };
-  return { parts, info };
+  return { parts, ghosts:[], info };      // スタンドは磁石を使わない
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -2165,26 +2180,9 @@ ground.receiveShadow = true; scene.add(ground);
 
 const root = new THREE.Group(); scene.add(root);
 
-/* まとめ刷りのときだけ出るベッドの板。root に入れておくと、
-   frame() が root をずらしても部品との位置関係がずれない */
-const bed = new THREE.Mesh(
-  new THREE.PlaneGeometry(1, 1),
-  new THREE.MeshStandardMaterial({ color:0xfdfefe, roughness:0.95 }));
-bed.receiveShadow = true; bed.position.z = 0.01; bed.visible = false; root.add(bed);
-const bedEdge = new THREE.LineSegments(
-  new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color:0x2ea7e0 }));
-bedEdge.visible = false; root.add(bedEdge);
-
-function showPlate(pl) {
-  bed.visible = bedEdge.visible = !!pl;
-  if (!pl) return;
-  const [W, H] = pl.plate, x = W / 2, y = H / 2, z = 0.02;
-  bed.scale.set(W, H, 1);
-  const pts = [[-x,-y],[x,-y],[x,-y],[x,y],[x,y],[-x,y],[-x,y],[-x,-y]];
-  bedEdge.geometry.dispose();
-  bedEdge.geometry = new THREE.BufferGeometry().setAttribute('position',
-    new THREE.Float32BufferAttribute(pts.flatMap(([a, b]) => [a, b, z]), 3));
-}
+/* ★「プレート」表示は 2026-08-14 に外した（ユーザー判断：まとめ刷りの並びは
+   スライサーで見れば足りる）。ベッドの板・ふちの線もいっしょに消してある。
+   まとめ刷り自体（buildPlate と書き出し）はそのまま残っている。 */
 
 function resize() {
   const w = view.clientWidth, h = view.clientHeight;
@@ -2250,7 +2248,7 @@ function placeParts(parts, info) {
   }
   parts.forEach(p => {
     let m;
-    if (state.view === 'print' || state.view === 'plate') m = printMatrix(p.print);
+    if (state.view === 'print') m = printMatrix(p.print);
     else {
       m = p.asm(g);
       if (p.lift && liftNow) m = mT(p.lift.x * liftNow, p.lift.y * liftNow, p.lift.z * liftNow).multiply(m);
@@ -2263,7 +2261,6 @@ function placeParts(parts, info) {
 }
 
 function applyView(parts, info, refit) {
-  showPlate(state.view === 'plate' && current ? current.plate : null);
   // クリックの案内は「組み立て」のときだけ（並べて見ているときは押しても動かない）
   document.getElementById('hint').style.display = state.view === 'assembled' ? '' : 'none';
   if (state.view !== 'assembled') { liftNow = liftTo = 0; spinNow = spinTo = 0; }
@@ -2278,7 +2275,6 @@ function frame(parts, refit) {
   root.updateMatrixWorld(true);
   const box = new THREE.Box3();
   parts.forEach(p => { p.obj.updateMatrixWorld(true); box.expandByObject(p.obj); });
-  if (bed.visible) { bed.updateMatrixWorld(true); box.expandByObject(bed); }
   if (box.isEmpty()) return;
   const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
   root.position.set(-c.x, -c.y, -box.min.z);         // 底をZ=0（床）にそろえる
@@ -2306,30 +2302,35 @@ function rebuild(refit) {
   // 前回のジオメトリ／マテリアルを捨てる。スライダーを動かすと毎回作り直すので、
   // 捨てないとGPU側にどんどん溜まる
   root.traverse(o => {
-    if (!o.isMesh || o === bed) return;
+    if (!o.isMesh) return;
     o.geometry.dispose();
     if (o.material.__disposed) return;
     o.material.__disposed = true; o.material.dispose();
   });
-  root.remove(...root.children.filter(o => o !== bed && o !== bedEdge));
+  root.remove(...root.children);
 
-  // まとめ刷りの表示のときは、詰めたあとのパーツ列（何セットぶんも）を並べる。
-  // 書き出しは表示と切りはなして、いつでも built.parts から詰め直す
+  // まとめ刷りは表示しないが、書き出しと案内のために詰めておく
   built.plate = buildPlate(built.parts, state.sets, state.plate);
   built.max = maxSets(built.parts, state.plate);
-  built.show = state.view === 'plate' ? built.plate.parts : built.parts;
+  /* ★磁石の見本は「分解」のときだけ足す。built.parts には入っていないので、
+     書き出し・まとめ刷り・部品表・材料のめやすには最初から出てこない */
+  built.show = state.view === 'exploded' && built.ghosts.length
+    ? [...built.parts, ...built.ghosts] : built.parts;
 
   // 同じ色ならマテリアルは使いまわす（まとめ刷りだと同じ色の板が何十枚も出るので）
   const mats = new Map();
-  const matOf = c => {
-    let m = mats.get(c);
-    if (!m) mats.set(c, m = new THREE.MeshStandardMaterial({
-      color:c, roughness:0.62, metalness:0.02 }));
+  const matOf = (c, metal) => {
+    const key = metal ? 'm' + c : c;
+    let m = mats.get(key);
+    if (!m) mats.set(key, m = new THREE.MeshStandardMaterial(metal
+      // 磁石はフィラメントと見分けがつくように、つやのある金属で
+      ? { color:c, roughness:0.22, metalness:0.95 }
+      : { color:c, roughness:0.62, metalness:0.02 }));
     return m;
   };
   built.show.forEach(p => {
     const grp = new THREE.Group();
-    const mat = matOf(p.color);
+    const mat = matOf(p.color, p.metal);
     p.geoms.forEach(g => {
       const m = new THREE.Mesh(g, mat);
       m.castShadow = true; m.receiveShadow = true;
