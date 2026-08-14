@@ -346,6 +346,21 @@ details.adv[open] summary{margin-bottom:6px}
             <button data-v="1000">×1000</button>
             <button data-v="25.4">×25.4</button>
           </div>
+          <label class="row"><span>高さ（厚み）</span></label>
+          <div class="seg" id="boxSquash">
+            <button data-v="1" aria-pressed="true">おさえる</button>
+            <button data-v="0">モデルのまま</button>
+          </div>
+          <div id="boxHmax">
+            <label class="row"><span>高さの上限</span><b id="bhmaxV">0.60 mm</b></label>
+            <input type="range" id="bhmax" min="0.4" max="3" step="0.1" value="0.6">
+          </div>
+          <div class="note">ロゴは<b>見える面の絵</b>が本体なので、厚みは 0.6mm もあれば十分です。
+            上限を超えたモデルは<b>高さだけを縮めます</b>（タテヨコはそのまま・絵は変わりません）。<br>
+            ★<b>0.6mm 以下なら、本体を厚くしなくてもそのまま収まります</b>
+            （深いと受け口が肉を突きぬけるので、その部品を厚くするしかなく、
+            スタンドでは「入りません」になります）。</div>
+
           <label class="row"><span>大きさの微調整</span><b id="bfineV">×1.00</b></label>
           <input type="range" id="bfine" min="1" max="1.5" step="0.01" value="1">
           <div class="note">読みこんだ<b>ロゴ（アイコン）だけ</b>を、そのままの大きさ（×1.00）から
@@ -557,6 +572,8 @@ const state = {
     fit:0.20,          // すきま（片側）
     scale:1,           // 読みこんだモデルの倍率（1/1000で作ってしまったとき用。3MFは不要）
     fine:1,            // 大きさの微調整（×1.00〜×1.50）。上の倍率にかけ算される
+    squash:true,       // 高さ（厚み）だけをつぶして上限におさえる
+    hmax:0.6,          // その上限（mm）。0.6なら本体を厚くしなくても収まる
     turn:0,            // 読みこんだモデルの回し方（面から見て 0/90/180/270°）
     flip:false,        // 読みこんだモデルを裏返す（自動で決めた向きの逆にする）
     mesh:null, info:null,
@@ -1278,12 +1295,20 @@ function boxSpec() {
     const w = (swap ? b.info.d : b.info.w) * k, d = (swap ? b.info.w : b.info.d) * k;
     // 円柱として使うときは、囲みの長いほうを直径とみなす
     const dia = Math.max(w, d);
-    return { kind:b.kind, w: round ? dia : w, d: round ? dia : d, h: b.info.h * k,
-             fit, merged, mesh:b.mesh, scale:k, turn:b.turn, flip:b.flip, from:'stl' };
+    /* ★高さ（厚み）だけをつぶす。ロゴは「見える面の絵」が本体なので厚みは要らないのに、
+       Blenderで2mmくらいに作ってあることが多い。深いままだと受け口が肉を突きぬけるので
+       その部品を厚くするしかなく、スタンドでは入らないと言われてしまう。
+       → 上限を超えたぶんだけ Z を縮める（タテヨコには一切さわらない）。 */
+    const h0 = b.info.h * k;
+    const h = b.squash ? Math.min(h0, b.hmax) : h0;
+    const kz = h0 > 1e-9 ? k * (h / h0) : k;
+    return { kind:b.kind, w: round ? dia : w, d: round ? dia : d, h,
+             fit, merged, mesh:b.mesh, scale:k, scaleZ:kz, h0, squashed: h < h0 - 1e-9,
+             turn:b.turn, flip:b.flip, from:'stl' };
   }
   const side = round ? b.dia : b.side;
   return { kind:b.kind, w:side, d:side, h:b.h,
-           fit, merged, mesh:null, scale:1, from:'size' };
+           fit, merged, mesh:null, scale:1, scaleZ:1, from:'size' };
 }
 /* 受け口の窓（四角柱は長方形・円柱は円）。cy は面の中で置く高さ。
    ★円は48角形なので、頂点を半径ちょうどに置くと「内接円」はそのぶん小さくなる。
@@ -1315,7 +1340,9 @@ function boxParts(b, z0, cy = 0, down = false) {
     const back = b.flip ? !down : down;
     return b.mesh.map((m, i) => {
       const g = m.geom.clone();
-      g.scale(b.scale, b.scale, b.scale);
+      // ★Zだけ別の倍率（高さをおさえるとき）。normalizeMesh が底を z=0 にそろえてあるので、
+      //   そのまま縮めれば底は動かない
+      g.scale(b.scale, b.scale, b.scaleZ != null ? b.scaleZ : b.scale);
       if (back) { g.rotateY(Math.PI); g.translate(0, 0, b.h); }   // 0..h のまま上下だけ返る
       // ★回すのは裏返したあと。そうすると「見えている面で回した角度」になる
       if (b.turn) g.rotateZ(b.turn * Math.PI / 180);
@@ -2410,6 +2437,9 @@ function updateBoxInfo(info) {
     (m ? `読みこみ：<b>${m.name}</b>（三角形 ${m.tris}` +
          (m.colors ? `・<b>色 ${m.colors} つき</b>` : '・色の指定なし') + `）<br>` : '') +
     `作るもの：<b>${size}</b><br>` +
+    (b.squashed
+      ? `<span class="good">高さを ${b.h0.toFixed(2)} → <b>${b.h.toFixed(2)}mm</b> におさえました` +
+        `（タテヨコはそのまま）</span><br>` : '') +
     `受け口：<b>${win} mm</b> / 深さ ${b.h.toFixed(2)}mm` +
     (b.merged ? '（<b>地続き</b>・すきま0）' : `（すきま片側 ${f.toFixed(2)}mm）`) + '<br>' +
     (m && b.kind === 'round' && Math.abs(m.w - m.d) > 0.02 * Math.max(m.w, m.d)
@@ -2536,6 +2566,11 @@ const boxSlider = (id, key, labelId, dec = 1) => {
   el.addEventListener('input', () => { state.box[key] = parseFloat(el.value); show(); requestRebuild(false); });
   show();
 };
+segBox('boxSquash', v => {
+  state.box.squash = v === '1';
+  document.getElementById('boxHmax').style.display = state.box.squash ? '' : 'none';
+});
+boxSlider('bhmax', 'hmax', 'bhmaxV', 2);
 // 大きさの微調整だけは mm ではなく倍率なので、ラベルの出し方を分ける
 {
   const el = document.getElementById('bfine'), lb = document.getElementById('bfineV');
