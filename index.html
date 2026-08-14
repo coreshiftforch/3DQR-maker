@@ -180,6 +180,78 @@ details.adv[open] summary{margin-bottom:6px}
   background:rgba(255,255,255,.8); padding:5px 9px; border-radius:8px;
 }
 
+/* ── 実物大 ───────────────────────────────
+   ★上のおび（案内＋ものさし）は、実物大のときだけ出す。
+     このときは QRプレビューと操作の案内を引っこめて、画面を測るのに使わせる */
+#realtop{display:none}
+body.real #realtop{
+  display:block; position:absolute; left:0; right:0; top:0; z-index:6;
+  background:rgba(255,255,255,.93); border-bottom:1px solid var(--line);
+  padding:7px 12px 3px; backdrop-filter:blur(6px);
+}
+body.real #hint, body.real #qrpv{display:none !important}
+#realtop .rt1{display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px}
+#realtop .rt1 .tag{
+  background:var(--accent); color:#fff; font-weight:700; font-size:11px;
+  padding:2px 7px; border-radius:6px; flex:none;
+}
+#realtop .rt1 .msg{color:var(--sub); flex:1 1 120px; min-width:0}
+#realtop .rt1 .msg b{color:var(--ink); font-variant-numeric:tabular-nums}
+#realtop .rt1 .msg .bad{color:var(--warn); font-weight:600}
+#ruler{height:24px; overflow:hidden; margin-top:2px}
+#ruler svg{display:block}
+#ruler text{font-size:8px; fill:#5b6673; font-family:inherit}
+
+/* 画面合わせのダイアログ。★position:fixed（画面ぜんたい）にする。
+   #view の中に置くと、スマホでビューが低いときに中身がはみ出て押せなくなる */
+#calib{
+  position:fixed; inset:0; z-index:50; display:grid; place-items:center;
+  background:rgba(20,30,45,.45); padding:12px; overflow:auto;
+}
+#calib[hidden]{display:none}
+.calbox{
+  background:var(--panel); border-radius:14px; padding:16px; width:min(560px,100%);
+  box-shadow:0 12px 40px rgba(20,30,45,.35); max-height:calc(100dvh - 24px); overflow:auto;
+}
+.calbox h3{margin:0 0 6px; font-size:15px}
+.calbox p{margin:0 0 10px; font-size:12px; color:var(--sub); line-height:1.7}
+.calway{
+  border:1px solid var(--line); border-radius:var(--r); padding:10px 11px; margin-bottom:10px;
+  font-size:12px; color:var(--sub); line-height:1.7;
+}
+.calway > b{color:var(--ink); font-size:12.5px}
+/* ★見本は「実物大」なので、絶対に縮めない。入りきらないときは横にスクロールさせる */
+#calShapes{
+  display:flex; align-items:center; gap:14px; margin:10px 0; overflow-x:auto; padding:2px;
+}
+#calCard{
+  border:2px solid var(--accent); border-radius:3.18mm; flex:none;
+  display:grid; place-items:center; text-align:center; color:var(--accent);
+  font-size:10px; line-height:1.4; background:#f2fafe;
+}
+#calCoin{
+  border:2px solid #b4703c; border-radius:50%; flex:none;
+  display:grid; place-items:center; text-align:center; color:#8a5024;
+  font-size:9px; line-height:1.3; background:#fbf3ec;
+}
+#calLine{
+  height:16px; margin:9px 0 4px; position:relative;
+  border-left:2px solid var(--ink); border-right:2px solid var(--ink);
+  background:linear-gradient(var(--ink),var(--ink)) left center/100% 2px no-repeat;
+}
+.calrow{display:flex; align-items:center; gap:10px; margin-top:8px}
+.calrow b{font-variant-numeric:tabular-nums; font-size:12.5px}
+.calrow input[type=number]{
+  width:74px; padding:7px 8px; border:1px solid var(--line); border-radius:var(--r);
+  font:inherit; font-size:13px; background:#fbfcfd;
+}
+.calbtns{display:flex; gap:8px; justify-content:flex-end; margin-top:12px}
+.calbtns button{
+  padding:9px 16px; border-radius:var(--r); border:1px solid var(--line);
+  background:#fbfcfd; font:inherit; font-size:13px; cursor:pointer; color:var(--ink);
+}
+.calbtns button.primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:700}
+
 /* ★たてに積むのは「本当にせまいとき」だけ。
    スマホの横向き（844×390など）で積むと、幅は余っているのにビューが潰れる。
    640pxを境にすれば、たて持ちのスマホは積み・横持ちとタブレットは左右に並ぶ */
@@ -187,6 +259,13 @@ details.adv[open] summary{margin-bottom:6px}
   #app{flex-direction:column-reverse}
   #panel{width:100%; height:60dvh; border-right:0; border-top:1px solid var(--line)}
   #view{height:40dvh}
+  /* ★実物大のあいだは画面をぜんぶビューに渡す。40dvh（スマホで約85mm）だと
+     キーホルダーすら入りきらず、「実物大」の意味がなくなるため。
+     もどる道は上のおびの「もどる」ボタン（パネルが消えても迷子にならない） */
+  body.real #panel{display:none}
+  body.real #view{height:100dvh}
+  /* せまい画面では、案内のうち「無くても困らない一言」は出さない（3行に折り返すため） */
+  #realtop .wide{display:none}
 }
 /* 左右に並ぶが画面が広くないとき、パネルを少し細くしてビューに幅を回す */
 @media (min-width:641px) and (max-width:860px){
@@ -487,6 +566,61 @@ details.adv[open] summary{margin-bottom:6px}
       <button data-v="exploded">分解</button>
       <button data-v="print">印刷の並び</button>
       <button data-toggle="coin" title="実物大の10円玉（φ23.5mm）をとなりに置きます">大きさ比較</button>
+      <button data-toggle="real" title="画面の上で本当の大きさ（1:1）にします">実物大</button>
+    </div>
+
+    <!-- 実物大のときだけ出る、上のおび（案内＋ものさし） -->
+    <div id="realtop">
+      <div class="rt1">
+        <span class="tag">実物大</span>
+        <span class="msg" id="realmsg"></span>
+        <button type="button" class="mini" id="calibBtn">画面を合わせる</button>
+        <button type="button" class="mini" id="realFront">正面</button>
+        <button type="button" class="mini" id="realOff">もどる</button>
+      </div>
+      <div id="ruler"></div>
+    </div>
+  </div>
+
+  <!-- 画面ごとの「1mm＝何px」を決める。一度決めたらこの端末では覚えておく -->
+  <div id="calib" hidden>
+    <div class="calbox">
+      <h3>画面の大きさを合わせる</h3>
+      <p>画面の細かさは端末ごとにちがうので、<b>この画面で 1mm が何ピクセルか</b>を一度だけ決めます。
+        合わせたあとは、この端末では次からも覚えています。</p>
+
+      <div class="calway">
+        <b>方法① カードを当てる（おすすめ）</b><br>
+        クレジットカード・診察券・交通系ICカードなど、<b>カードはどれも 85.6 × 54.0mm</b> です。
+        画面に当てて、<b>青いわくとぴったり重なる</b>まで下のつまみを動かしてください。
+        となりの円は10円玉（φ23.5mm）です。両方合えば正解です。
+        <div id="calShapes">
+          <div id="calCard"><span id="calCardT"></span></div>
+          <div id="calCoin"><span>10円玉<br>φ23.5</span></div>
+        </div>
+        <input type="range" id="calRange" min="1.5" max="12" step="0.01" aria-label="見本の大きさ">
+        <div class="calrow">
+          <button type="button" class="mini" id="calMinus">− 小さく</button>
+          <b id="calVal"></b>
+          <button type="button" class="mini" id="calPlus">＋ 大きく</button>
+        </div>
+      </div>
+
+      <div class="calway">
+        <b>方法② 定規で測る</b><br>
+        下の線を定規で測って、その長さ（mm）を入れてください。カードが無いときはこちらで。
+        <div id="calLine"></div>
+        <div class="calrow">
+          <input type="number" id="calMm" step="0.5" min="10" inputmode="decimal" aria-label="測った長さ（mm）">
+          <span>mm だった</span>
+          <button type="button" class="mini" id="calApply">この長さにする</button>
+        </div>
+      </div>
+
+      <div class="calbtns">
+        <button type="button" id="calReset">既定にもどす</button>
+        <button type="button" class="primary" id="calOk">決定</button>
+      </div>
     </div>
   </div>
 
@@ -592,12 +726,46 @@ const state = {
   cQr1:0x1a1a1a, cQr2:0x8f959c, cTile:0xf2f2f2, cBody:0xf2f2f2, cLogo:0x2ea7e0,
   view:'assembled',
   coin:false,                   // 大きさ比べの10円玉を出すか
+  real:false,                   // 実物大（1:1）で見せるか。表示のしかたとは別の入／切
   plate:'p1s', sets:1,          // まとめ刷り（既定は1セット。増やすときは「いっぱいまで」）
 };
 
 let current = null;          // いま組み立てているモデル
 let liftNow = 0, liftTo = 0; // クリックでQR側を持ち上げる量（現在値／目標値）
 let spinNow = 0, spinTo = 0; // 外したあと、もう一度クリックで裏返す角度（0 → π）
+
+/* ══════════════════════════════════════════════════════════════
+   画面のものさし（1mm＝何px か）
+   ★ブラウザは「この画面が何インチか」を教えてくれない。
+     CSSの1pxは決まりのうえでは 1/96インチだが、実際の見た目の大きさは端末で変わる。
+     なので **既定は 96dpi のつもり**で出しておいて、ユーザーにカードか定規で
+     合わせてもらい、その結果を端末に覚えさせる（localStorage）。
+   ★覚えるのは「CSSピクセル」ではなく **本物のピクセル**（× devicePixelRatio）。
+     PCでブラウザの拡大率を変えると devicePixelRatio が変わり、CSSピクセルの
+     大きさも一緒に変わるので、本物のピクセルで持っておけば拡大しても実物大のまま。
+   ══════════════════════════════════════════════════════════════ */
+const CARD = { w:85.60, h:53.98 };      // ISO/IEC 7810 ID-1（クレジットカード・ICカード共通）
+const PPMM_DEF = 96 / 25.4;             // 合わせる前の見こみ（1mm ≒ 3.78 CSSピクセル）
+const CAL_KEY = 'qr3d.screen';
+const CAL_LINE_PX = 300;                // 「定規で測る」に出す線の長さ（CSSピクセル・固定）
+let cal = null;                         // {phys:本物のピクセル/mm} 合わせていなければ null
+
+try {
+  const j = JSON.parse(localStorage.getItem(CAL_KEY) || 'null');
+  if (j && isFinite(j.phys) && j.phys > 0.5 && j.phys < 40) cal = { phys:j.phys };
+} catch (e) { /* プライベートモードなどで読めなくても既定で動く */ }
+
+// いまの1mmは何CSSピクセルか
+const ppmm = () => cal ? cal.phys / devicePixelRatio : PPMM_DEF;
+// CSSピクセル/mm で合わせる（覚えるのは本物のピクセル）
+function setPpmm(v) {
+  cal = { phys: v * devicePixelRatio };
+  try { localStorage.setItem(CAL_KEY, JSON.stringify(cal)); } catch (e) {}
+}
+function clearPpmm() {
+  cal = null;
+  try { localStorage.removeItem(CAL_KEY); } catch (e) {}
+}
 
 /* ══════════════════════════════════════════════════════════════
    QR
@@ -2220,6 +2388,88 @@ camera.position.set(90, -140, 110);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
 
+/* 実物大のカメラ。★遠近法（PerspectiveCamera）では「奥ほど小さく」写るので
+   1:1 にならない。**正射影**にして、写す範囲（mm）＝画面の大きさ（px）÷（px/mm）
+   にすると、画面の上の1mmが本当の1mmになる。
+   　拡大は禁止（拡大したら実物大でなくなる）。指1本・左ドラッグは**移動**にする
+   （画面より大きいモデルを見て回るのが主な用事で、回転が主ではないため）。 */
+const oCam = new THREE.OrthographicCamera(-50, 50, 50, -50, 0.1, 9000);
+const oCtl = new OrbitControls(oCam, renderer.domElement);
+oCtl.enableDamping = false;
+oCtl.enableZoom = false;                      // ★ここを許すと実物大が崩れる
+oCtl.screenSpacePanning = true;
+oCtl.mouseButtons = { LEFT:THREE.MOUSE.PAN, MIDDLE:THREE.MOUSE.PAN, RIGHT:THREE.MOUSE.ROTATE };
+oCtl.touches = { ONE:THREE.TOUCH.PAN, TWO:THREE.TOUCH.DOLLY_ROTATE };
+oCtl.enabled = false;
+const activeCam = () => state.real ? oCam : camera;
+
+// 写す範囲を「画面の大きさ ÷ いまの px/mm」に合わせる（＝1:1）
+function realFrustum() {
+  const k = ppmm(), w = view.clientWidth / k, h = view.clientHeight / k;
+  oCam.left = -w / 2; oCam.right = w / 2;
+  oCam.top = h / 2;   oCam.bottom = -h / 2;
+  oCam.updateProjectionMatrix();
+}
+
+/* まっすぐ正面から見る向きを決める。
+   ★「いちばん薄い向きから見る」＝いちばん広い面が正面に来る、という一本の決まりで、
+     キーホルダー（寝ている＝上から）もスタンド（立っている＝手前から）も
+     印刷の並び（ぜんぶ寝ている＝上から）も、ぜんぶ正しい向きになる */
+function aimReal(s) {
+  const dir = (s.x <= s.y && s.x <= s.z) ? new THREE.Vector3(1, 0, 0)
+            : (s.y <= s.z)               ? new THREE.Vector3(0, -1, 0)
+            :                              new THREE.Vector3(0, 0, 1);
+  // 見おろすときは「奥が上」。それ以外は Z が上（アプリぜんたいと同じ向き）
+  oCam.up.copy(dir.z ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1));
+  const t = new THREE.Vector3(0, 0, s.z / 2);
+  oCtl.target.copy(t);
+  oCam.position.copy(t).addScaledVector(dir, 1500);   // 正射影なので距離は写る大きさに効かない
+  oCtl.update();
+}
+
+/* 上のおびの案内。いま画面に何mm×何mm写っていて、モデルが入りきるかを出す */
+function realMsg(box) {
+  const el = document.getElementById('realmsg');
+  if (!el || !box || box.isEmpty()) return;
+  const k = ppmm();
+  oCam.updateMatrixWorld(true);
+  // 正射影なので、カメラ座標に移した8つのかどの広がり＝そのまま画面に写る大きさ（mm）
+  const v = new THREE.Vector3();
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < 8; i++) {
+    v.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z)
+     .applyMatrix4(oCam.matrixWorldInverse);
+    x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x);
+    y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y);
+  }
+  const mw = x1 - x0, mh = y1 - y0;
+  const fit = mw <= (oCam.right - oCam.left) && mh <= (oCam.top - oCam.bottom);
+  el.innerHTML =
+    `<b>${mw.toFixed(1)} × ${mh.toFixed(1)} mm</b>` +
+    `<span class="wide">（1mm = <b>${k.toFixed(2)} px</b>）</span>` +
+    (cal ? '' : ' <span class="bad">未調整</span>') +
+    (fit ? '<span class="wide">　定規や10円玉を画面に当てて確かめられます</span>'
+         : '　<span class="bad">画面より大きいのでドラッグして動かせます</span>');
+}
+
+/* 下じきのものさし。1mmごとに目もり、5mmで中くらい、10mmで長い線＋cmの数字 */
+function drawRuler() {
+  const el = document.getElementById('ruler');
+  if (!el || !state.real) return;
+  const k = ppmm(), w = Math.max(40, view.clientWidth - 24), H = 24;
+  const n = Math.floor(w / k);
+  let d = '', lab = '';
+  for (let i = 0; i <= n; i++) {
+    const x = (i * k).toFixed(2);
+    const t = i % 10 === 0 ? 13 : i % 5 === 0 ? 8 : 4;
+    d += `M${x} ${H}V${H - t}`;
+    if (i && i % 10 === 0) lab += `<text x="${x}" y="9" text-anchor="middle">${i / 10}</text>`;
+  }
+  el.innerHTML = `<svg width="${w}" height="${H}" viewBox="0 0 ${w} ${H}">` +
+    `<path d="${d}" stroke="#3a4756" stroke-width="1" fill="none" shape-rendering="crispEdges"/>` +
+    `<text x="2" y="9" text-anchor="start">cm</text>${lab}</svg>`;
+}
+
 scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa6b2, 2.0));
 const key = new THREE.DirectionalLight(0xffffff, 2.2);
 key.castShadow = true;
@@ -2299,6 +2549,9 @@ function resize() {
   const w = view.clientWidth, h = view.clientHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h; camera.updateProjectionMatrix();
+  // 実物大は「画面の大きさ」そのものが写す範囲なので、リサイズのたびに取り直す
+  realFrustum();
+  if (state.real) { drawRuler(); realMsg(lastBox); }
 }
 new ResizeObserver(resize).observe(view);
 
@@ -2312,8 +2565,8 @@ new ResizeObserver(resize).observe(view);
     liftNow = liftTo; spinNow = spinTo;
     placeParts(current.show, current.info);
   }
-  controls.update();
-  renderer.render(scene, camera);
+  (state.real ? oCtl : controls).update();
+  renderer.render(scene, activeCam());
 })();
 
 /* クリック判定。ドラッグ（回転）と区別するため、押した位置から5px以内で離したときだけ */
@@ -2324,7 +2577,7 @@ function hitLiftable(ev) {
   if (!current || state.view !== 'assembled') return false;
   const r = renderer.domElement.getBoundingClientRect();
   ptr.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
-  ray.setFromCamera(ptr, camera);
+  ray.setFromCamera(ptr, activeCam());
   // 10円玉は飾りなので、押しても部品は動かさない
   return ray.intersectObjects(root.children.filter(o => o !== coin), true).length > 0;
 }
@@ -2389,6 +2642,7 @@ function applyView(parts, info, refit) {
 
 // refit=false のときはカメラに一切さわらない。
 // スライダーを動かすたびにカメラを置き直すと、OrbitControlsのダンピングと引っぱり合って像がにじむ。
+const lastBox = new THREE.Box3();    // ずらしたあとの、いまのモデルの入れもの（実物大の案内に使う）
 function frame(parts, refit) {
   root.position.set(0, 0, 0);        // 前回のずらしを打ち消してから測る（積み重なると流れていく）
   root.updateMatrixWorld(true);
@@ -2399,6 +2653,14 @@ function frame(parts, refit) {
   const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
   root.position.set(-c.x, -c.y, -box.min.z);         // 底をZ=0（床）にそろえる
   fitShadow(Math.max(s.x, s.y, s.z));
+  // ずらしたぶんを足して覚えておく（測ったのは、ずらす前の座標なので）
+  lastBox.copy(box).translate(root.position);
+  if (state.real) {
+    // ★実物大では枠に「収めない」。収めたら実物大でなくなる。向きだけ決めて、写す範囲は画面まかせ
+    if (refit) aimReal(s);
+    realFrustum(); drawRuler(); realMsg(lastBox);
+    return;
+  }
   if (!refit) return;
   const d = Math.max(s.x, s.y, s.z) * 2.1;
   controls.target.set(0, 0, s.z / 2);
@@ -2840,6 +3102,96 @@ swatches('cTile', 'cTile', 'c3n');
 swatches('cBody', 'cBody', 'c4n');
 swatches('cLogo', 'cLogo', 'c5n');
 
+/* ══════════════════════════════════════════════════════════════
+   実物大（1:1）
+   ══════════════════════════════════════════════════════════════ */
+const calib = document.getElementById('calib');
+
+function realRefresh() {
+  realFrustum();
+  if (!state.real) return;
+  drawRuler();
+  realMsg(lastBox);
+}
+
+function setReal(on) {
+  state.real = on;
+  document.body.classList.toggle('real', on);
+  // カメラは同時に2つ動かさない（同じ場所を触るので、片方は必ず切る）
+  controls.enabled = !on; oCtl.enabled = on;
+  document.querySelector('#viewbar button[data-toggle=real]').setAttribute('aria-pressed', on);
+  // スマホでは実物大のあいだパネルが消えてビューの大きさが変わるので、測り直してから組み直す
+  resize();
+  requestRebuild(true);
+  if (on && !cal) openCalib();      // まだ合わせていない端末は、まず合わせてもらう
+}
+
+document.getElementById('realOff').onclick = () => setReal(false);
+document.getElementById('realFront').onclick = () => {
+  if (lastBox.isEmpty()) return;
+  aimReal(lastBox.getSize(new THREE.Vector3()));
+  realMsg(lastBox);
+};
+
+/* ── 画面合わせ ───────────────────────────── */
+let calLinePx = CAL_LINE_PX;
+const openCalib = () => { calib.hidden = false; requestAnimationFrame(calDraw); };
+
+function calDraw() {
+  const k = ppmm();
+  const wrap = document.getElementById('calShapes');
+  const avail = wrap.clientWidth - 4;
+  // ★見本は実物大なので縮められない。カードの長いほうが入らない画面（ふつうのスマホは
+  //   横 65mm くらいしかない）では、カードを **たてにして** 54.0mm のほうを合わせてもらう
+  const land = CARD.w * k + COIN.d * k + 16 <= avail;
+  const card = document.getElementById('calCard');
+  card.style.width  = (land ? CARD.w : CARD.h) * k + 'px';
+  card.style.height = (land ? CARD.h : CARD.w) * k + 'px';
+  document.getElementById('calCardT').innerHTML = land
+    ? 'カード<br>85.6 × 54.0mm' : 'カード<br>54.0mm<br>×<br>85.6mm';
+  const cn = document.getElementById('calCoin');
+  cn.style.width = cn.style.height = COIN.d * k + 'px';
+
+  document.getElementById('calVal').textContent = `1mm = ${k.toFixed(2)} px`;
+  document.getElementById('calRange').value = k;
+  // 定規で測る線。入りきらない画面では短くして、その長さで計算する
+  calLinePx = Math.min(CAL_LINE_PX, Math.max(120, avail));
+  document.getElementById('calLine').style.width = calLinePx + 'px';
+  document.getElementById('calMm').placeholder = (calLinePx / k).toFixed(1);
+}
+
+const calSet = v => {
+  setPpmm(Math.min(12, Math.max(1.5, v)));
+  calDraw(); realRefresh();
+};
+document.getElementById('calRange').addEventListener('input', e => calSet(parseFloat(e.target.value)));
+document.getElementById('calMinus').onclick = () => calSet(ppmm() - 0.02);
+document.getElementById('calPlus').onclick  = () => calSet(ppmm() + 0.02);
+document.getElementById('calApply').onclick = () => {
+  const mm = parseFloat(document.getElementById('calMm').value);
+  if (!isFinite(mm) || mm < 10) { document.getElementById('calMm').focus(); return; }
+  calSet(calLinePx / mm);            // 線の長さ(px) ÷ 測った長さ(mm) ＝ 1mmのpx数
+};
+document.getElementById('calReset').onclick = () => { clearPpmm(); calDraw(); realRefresh(); };
+document.getElementById('calOk').onclick = () => { calib.hidden = true; };
+document.getElementById('calibBtn').onclick = openCalib;
+// 外がわを押しても閉じる（スマホで「決定」まで指がとどかないときのため）
+calib.addEventListener('click', e => { if (e.target === calib) calib.hidden = true; });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !calib.hidden) calib.hidden = true;
+});
+
+/* ★PCでブラウザの拡大率を変えると devicePixelRatio が変わる＝CSSの1pxの大きさが変わる。
+   覚えているのは本物のピクセルなので、変わったら px/mm を計算し直せば実物大のまま保てる */
+let dprMQ = null;
+function onDpr() { watchDpr(); realRefresh(); if (!calib.hidden) calDraw(); }
+function watchDpr() {
+  if (dprMQ) dprMQ.removeEventListener('change', onDpr);
+  dprMQ = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+  dprMQ.addEventListener('change', onDpr);
+}
+watchDpr();
+
 document.getElementById('viewbar').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   // ★「大きさ比較」は表示の切りかえではなく入／切。3つのボタンの選択には混ぜない
@@ -2850,6 +3202,8 @@ document.getElementById('viewbar').addEventListener('click', e => {
     requestRebuild(state.coin);
     return;
   }
+  // 「実物大」も入／切。組み立て／分解／印刷のどれと組み合わせても使える
+  if (b.dataset.toggle === 'real') { setReal(!state.real); return; }
   [...e.currentTarget.querySelectorAll('button[data-v]')]
     .forEach(x => x.setAttribute('aria-pressed', x === b));
   state.view = b.dataset.v;
@@ -2896,6 +3250,7 @@ document.getElementById('dlpng').onclick = () => {
 window.__qr3d = {
   get model() { return current; },
   renderer, camera, controls, scene, root, coin,
+  oCam, oCtl, ppmm, setPpmm, clearPpmm, setReal, CARD,   // 実物大まわり（動作確認用）
   export3MF, exportSTL,
   state, PLATES, PL, BOX, K, S, buildPlate, maxSets, volumeOf, printMatrix,
   parseSTL, parseOBJ, parse3MF, parseModel, unzipAll,
