@@ -443,8 +443,8 @@ details.adv[open] summary{margin-bottom:6px}
       <select id="plate"></select>
       <label class="row"><span>セット数</span>
         <span class="rt"><button type="button" class="mini" id="setsMax">いっぱいまで</button>
-        <b id="setsV">4 セット</b></span></label>
-      <input type="range" id="sets" min="1" max="24" step="1" value="4">
+        <b id="setsV">1 セット</b></span></label>
+      <input type="range" id="sets" min="1" max="24" step="1" value="1">
       <div class="info" id="plateinfo" style="margin-top:9px"></div>
       <div class="dl" style="margin-top:9px">
         <button class="primary" id="dlplate3mf">プレートの3MF
@@ -566,7 +566,7 @@ const state = {
   // 色は5つ：QR①／QR②／QRの本体（タイル・プレート）／本体（わく・中ぶた・脚）／ロゴ
   cQr1:0x1a1a1a, cQr2:0x8f959c, cTile:0xf2f2f2, cBody:0xf2f2f2, cLogo:0x2ea7e0,
   view:'assembled',
-  plate:'p1s', sets:4,          // まとめ刷り
+  plate:'p1s', sets:1,          // まとめ刷り（既定は1セット。増やすときは「いっぱいまで」）
 };
 
 let current = null;          // いま組み立てているモデル
