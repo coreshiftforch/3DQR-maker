@@ -1058,6 +1058,9 @@ function boxesGeom(rects, cell, ox, oy, z0, z1) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal',   new THREE.Float32BufferAttribute(nor, 3));
+  // ★1つの箱＝12三角形の閉じたカラ。3MFで頂点をまとめるとき、この区切りを越えないようにする
+  //   （となり合う箱は面がぴったり接しているので、またいでまとめると辺が4枚になる）
+  g.userData.shell = 12;
   return g;
 }
 
@@ -1848,21 +1851,39 @@ function zipStore(files) {
   return out;
 }
 
+/* 3MFのメッシュ。
+   ★**頂点を必ず溶接する**（同じ座標は同じ番号にまとめる）。
+     Three.js のジオメトリは index を持たないので、そのまま書くと三角形ごとに頂点が
+     3つずつ独立してしまい、**スライサーから見ると辺がひとつも共有されていない**
+     ＝「開いた辺だらけの壊れたモデル」になる。Bambu Studio が毎回「修復」を出すのはこれで、
+     修復せずに刷ると失敗する（2026-08-14 ユーザー報告）。
+     溶接すると、閉じたカラは辺が必ず2枚ずつになって修復が要らなくなる。ファイルも小さくなる。
+   ★溶接は**ジオメトリ（＝カラ）ごと**に行う。ここをまたいでまとめると、
+     重ねてある板どうしの接する面で辺が4枚になってしまう（このアプリは
+     「閉じたカラを重ねてスライサーに合体させる」作りなので、カラは別々のままにしておく）。 */
 function meshXML(geoms) {
-  let vx = '', tx = '', base = 0;
   const f = v => (Math.round(v * 1e4) / 1e4);
+  const vx = [], tx = [];
   for (const g of geoms) {
     const pos = g.attributes.position, idx = g.index;
-    for (let i = 0; i < pos.count; i++)
-      vx += `<vertex x="${f(pos.getX(i))}" y="${f(pos.getY(i))}" z="${f(pos.getZ(i))}"/>`;
-    if (idx) { const a = idx.array;
-      for (let i = 0; i < a.length; i += 3)
-        tx += `<triangle v1="${base + a[i]}" v2="${base + a[i+1]}" v3="${base + a[i+2]}"/>`; }
-    else { for (let i = 0; i < pos.count; i += 3)
-        tx += `<triangle v1="${base + i}" v2="${base + i+1}" v3="${base + i+2}"/>`; }
-    base += pos.count;
+    const map = new Map();                       // このカラのなかだけで使う「座標 → 番号」
+    const id = j => {
+      const x = f(pos.getX(j)), y = f(pos.getY(j)), z = f(pos.getZ(j)), k = `${x},${y},${z}`;
+      let i = map.get(k);
+      if (i === undefined) { map.set(k, i = vx.length); vx.push(`<vertex x="${x}" y="${y}" z="${z}"/>`); }
+      return i;
+    };
+    const n = idx ? idx.count : pos.count;
+    const shell = g.userData && g.userData.shell;   // 1カラぶんの三角形の数（あれば）
+    for (let i = 0; i < n; i += 3) {
+      if (shell && (i / 3) % shell === 0) map.clear();   // カラの切れ目でまとめ直す
+      const t = [0, 1, 2].map(k => id(idx ? idx.getX(i + k) : i + k));
+      // 丸めたせいで2点が重なった三角形は捨てる（面積0はスライサーがエラーに数える）
+      if (t[0] === t[1] || t[1] === t[2] || t[2] === t[0]) continue;
+      tx.push(`<triangle v1="${t[0]}" v2="${t[1]}" v3="${t[2]}"/>`);
+    }
   }
-  return `<mesh><vertices>${vx}</vertices><triangles>${tx}</triangles></mesh>`;
+  return `<mesh><vertices>${vx.join('')}</vertices><triangles>${tx.join('')}</triangles></mesh>`;
 }
 
 /* 3MF書き出し。
