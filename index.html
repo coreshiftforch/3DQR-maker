@@ -346,6 +346,13 @@ details.adv[open] summary{margin-bottom:6px}
             <button data-v="1000">×1000</button>
             <button data-v="25.4">×25.4</button>
           </div>
+          <label class="row"><span>大きさの微調整</span><b id="bfineV">×1.00</b></label>
+          <input type="range" id="bfine" min="1" max="1.2" step="0.01" value="1">
+          <div class="note">読みこんだ<b>ロゴ（アイコン）だけ</b>を、そのままの大きさ（×1.00）から
+            <b>×1.20</b> まで少しずつ大きくできます。タテヨコだけでなく<b>厚み（＝受け口の深さ）も
+            同じ倍率</b>で大きくなります（形は変わりません）。<b>受け口も一緒に大きくなる</b>ので
+            はめ合いは変わりません。面に入らなくなったときは、その面には受け口を開けずに
+            下の案内に出します（倍率を下げるか、本体を大きくしてください）。</div>
           <div class="note">読めるのは <b>STL（バイナリ／ASCII）・OBJ・3MF</b> の3つ。
             Blenderの「エクスポート」からどれで出してもOKです。<br>
             <b>3MFは単位が書いてある</b>ので倍率は要りません。STL・OBJは単位が無いので、
@@ -548,6 +555,7 @@ const state = {
     dia:20,            // 円柱の直径（mm）
     fit:0.20,          // すきま（片側）
     scale:1,           // 読みこんだモデルの倍率（1/1000で作ってしまったとき用。3MFは不要）
+    fine:1,            // 大きさの微調整（×1.00〜×1.20）。上の倍率にかけ算される
     turn:0,            // 読みこんだモデルの回し方（面から見て 0/90/180/270°）
     flip:false,        // 読みこんだモデルを裏返す（自動で決めた向きの逆にする）
     mesh:null, info:null,
@@ -1261,7 +1269,9 @@ function boxSpec() {
   const fit = merged ? 0 : Math.min(BOX.maxFit, Math.max(BOX.minFit, b.fit));
   if (b.src === 'stl') {
     if (!b.mesh || !b.info) return null;
-    const k = b.scale;
+    // ★倍率（単位あわせ）× 微調整（×1.00〜×1.20）。ここでまとめておけば、
+    //   受け口の窓・部品のジオメトリ・案内の数字が全部そろって大きくなる
+    const k = b.scale * b.fine;
     // ★90°／270°に回すと、囲みのタテヨコが入れかわる。受け口も入れかえないと入らない
     const swap = b.turn === 90 || b.turn === 270;
     const w = (swap ? b.info.d : b.info.w) * k, d = (swap ? b.info.w : b.info.d) * k;
@@ -2525,6 +2535,15 @@ const boxSlider = (id, key, labelId, dec = 1) => {
   el.addEventListener('input', () => { state.box[key] = parseFloat(el.value); show(); requestRebuild(false); });
   show();
 };
+// 大きさの微調整だけは mm ではなく倍率なので、ラベルの出し方を分ける
+{
+  const el = document.getElementById('bfine'), lb = document.getElementById('bfineV');
+  const show = () => lb.textContent = '×' + state.box.fine.toFixed(2);
+  el.addEventListener('input', () => {
+    state.box.fine = parseFloat(el.value); show(); requestRebuild(false);
+  });
+  show();
+}
 boxSlider('bside', 'side', 'bsideV');
 boxSlider('bdia', 'dia', 'bdiaV');
 boxSlider('bh', 'h', 'bhV');
