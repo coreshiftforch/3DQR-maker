@@ -45,6 +45,13 @@ body{
 }
 #panel h1{margin:0; font-size:16px; letter-spacing:.02em}
 #panel h1 small{display:block; font-weight:400; font-size:11.5px; color:var(--sub); margin-top:2px}
+.steps{
+  display:flex; gap:4px; margin-top:10px; color:var(--sub); font-size:10.5px;
+}
+.steps span{
+  flex:1 1 0; min-width:0; padding:4px 3px; border:1px solid var(--line);
+  border-radius:7px; text-align:center; background:#fbfcfd; white-space:nowrap;
+}
 .sec{padding:14px 18px; border-bottom:1px solid var(--line)}
 .sec > h2{
   margin:0 0 8px; font-size:11.5px; font-weight:700; color:var(--sub);
@@ -76,6 +83,14 @@ input[type=range]{width:100%; accent-color:var(--accent); margin:0}
 }
 .seg button:hover{border-color:#c4ccd6}
 .seg button[aria-pressed=true]{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
+.quick-row{display:flex; gap:6px; flex-wrap:wrap; margin-top:8px}
+.recipe-grid{display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px}
+.recipe-grid button{
+  padding:9px 8px; border:1px solid var(--line); background:#fbfcfd; border-radius:var(--r);
+  font:inherit; font-size:12px; line-height:1.35; cursor:pointer; text-align:left; color:var(--ink);
+}
+.recipe-grid button:hover{border-color:#c4ccd6; background:#fff}
+.recipe-grid button small{display:block; margin-top:2px; color:var(--sub); font-size:10.5px}
 .cards{display:grid; grid-template-columns:1fr 1fr; gap:8px}
 .cards button{
   padding:11px 8px; border:1.5px solid var(--line); background:#fbfcfd; border-radius:var(--r);
@@ -127,6 +142,7 @@ input[type=file]{
 .dl button.primary:hover{background:var(--accent-d)}
 .dl button small{display:block; font-size:10.5px; opacity:.75; font-weight:400}
 .dl button:disabled{opacity:.45; cursor:not-allowed}
+.download-sec{background:var(--panel)}
 details.adv summary{
   cursor:pointer; font-size:12px; color:var(--sub); padding:2px 0; user-select:none;
 }
@@ -208,6 +224,8 @@ details.adv[open] summary{margin-bottom:6px}
      スライダーは見た目の線は細いままでよく、要素の高さだけ増やせば押しやすくなる */
   input[type=range]{height:30px}
   button.mini{padding:7px 12px}
+  .steps{font-size:10px}
+  .recipe-grid{grid-template-columns:1fr}
   input[type=file]{padding:6px 0}
   select{padding:11px 10px}
   .seg button{padding:11px 8px}
@@ -222,6 +240,9 @@ details.adv[open] summary{margin-bottom:6px}
     <header>
       <h1>URL → QR → 3Dモデル
         <small>URLを入れると、3Dプリンターで刷れるデータになります</small></h1>
+      <div class="steps" aria-label="作成ステップ">
+        <span>1 入力</span><span>2 形</span><span>3 色</span><span>4 確認</span><span>5 保存</span>
+      </div>
     </header>
 
     <div class="sec">
@@ -232,6 +253,10 @@ details.adv[open] summary{margin-bottom:6px}
       <label class="row" for="url2"><span>うら面<small style="opacity:.8">（空なら片面だけ）</small></span></label>
       <input type="text" id="url2" value="" spellcheck="false"
              placeholder="入れると、うら面にも別のQRが付きます">
+      <div class="quick-row">
+        <button type="button" class="mini" data-sample-url="https://core-shift.jp">サンプルURL</button>
+        <button type="button" class="mini" data-sample-url="">空にする</button>
+      </div>
       <div id="err"></div>
       <div class="info" id="qrinfo" style="margin-top:9px"></div>
     </div>
@@ -250,6 +275,21 @@ details.adv[open] summary{margin-bottom:6px}
                stroke-linecap="round" stroke-linejoin="round">
             <path d="M19 5.5 11.5 17c-2.5 5-1.5 7.5 2.5 7.5H25"/></svg>
           スタンド<small>店頭に置く</small>
+        </button>
+      </div>
+      <div class="note">よく使う目的から始める場合は、下のプリセットで大きさと形をまとめて合わせられます。</div>
+      <div class="recipe-grid" id="recipes">
+        <button type="button" data-kind="key" data-size="42" data-url="https://core-shift.jp">
+          小さめキーホルダー<small>配布しやすい軽いサイズ</small>
+        </button>
+        <button type="button" data-kind="key" data-size="56" data-url="https://core-shift.jp">
+          読み取り安定<small>余白とQRを大きめに確認</small>
+        </button>
+        <button type="button" data-kind="stand" data-size="90" data-url="https://core-shift.jp">
+          店頭スタンド<small>机や受付に置くサイズ</small>
+        </button>
+        <button type="button" data-kind="key" data-size="48" data-url="https://core-shift.jp">
+          イベント配布<small>まとめ刷り前提の標準</small>
         </button>
       </div>
     </div>
@@ -441,7 +481,7 @@ details.adv[open] summary{margin-bottom:6px}
       </details>
     </div>
 
-    <div class="sec">
+    <div class="sec download-sec">
       <h2><span class="n">6</span>ダウンロード</h2>
       <div class="dl">
         <button class="primary" id="dl3mf">3MF をダウンロード
@@ -2596,6 +2636,13 @@ document.getElementById('url').addEventListener('input', e => {
 document.getElementById('url2').addEventListener('input', e => {
   state.text2 = e.target.value; requestRebuild(false);
 });
+document.querySelectorAll('[data-sample-url]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const input = document.getElementById('url');
+    input.value = btn.dataset.sampleUrl;
+    input.dispatchEvent(new Event('input', { bubbles:true }));
+  });
+});
 
 // レイアウト：面ごとに「なし／QR①／QR②／はめ込み（ロゴ）」を選ぶ
 const boxPanel = document.getElementById('boxPanel');
@@ -2785,6 +2832,22 @@ segment('kind', 'kind', () => {
   s.min = key ? 36 : 50; s.max = key ? 90 : 140;
   state.size = SIZE_DEF[state.kind]; s.value = state.size;
   document.getElementById('sizeV').textContent = state.size + ' mm';
+});
+document.getElementById('recipes').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const kindBtn = document.querySelector(`#kind button[data-v="${b.dataset.kind}"]`);
+  if (kindBtn && state.kind !== b.dataset.kind) kindBtn.click();
+  const url = document.getElementById('url');
+  url.value = b.dataset.url;
+  url.dispatchEvent(new Event('input', { bubbles:true }));
+  const back = document.getElementById('url2');
+  back.value = '';
+  back.dispatchEvent(new Event('input', { bubbles:true }));
+  const size = document.getElementById('size');
+  state.size = parseFloat(b.dataset.size);
+  size.value = state.size;
+  document.getElementById('sizeV').textContent = state.size + ' mm';
+  requestRebuild(true);
 });
 segment('mag', 'mag');
 
